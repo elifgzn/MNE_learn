@@ -1,0 +1,17 @@
+# Data files (too large for git)
+eeg1_raweeg/
+MNE_preprocessed/
+*.fif
+*.eeg
+*.vhdr
+*.vmrk
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
