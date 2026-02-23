@@ -1,4 +1,4 @@
-# MNE EEG Preprocessing Pipeline
+# MNE EEG Preprocessing & ERP Analysis Pipeline
 
 This project adapts an EEG preprocessing and ERP analyses pipeline that was prepared on MATLAB using FieldTrip, to MNE on Python. It exactly matches FieldTrip functions and preprocessing order.
 
