@@ -5,6 +5,28 @@ import os
 import gc
 import mne
 
+# ──────────────────────────────────────────────────────────────
+# Which participant(s) to process?
+# Use a single-element list (e.g. [31]) to test one participant,
+# or list(range(5, 38)) to run all of them.
+# ──────────────────────────────────────────────────────────────
+plist = [31]  # <-- change this as needed
+
+# ──────────────────────────────────────────────────────────────
+# Bad channels per participant (Step 6 from FieldTrip workflow)
+# Identified after visual ICA inspection. If a channel is extremely
+# noisy, add it here and re-run. Empty list = no bad channels.
+# ──────────────────────────────────────────────────────────────
+bad_channels = {
+    # 17: ['AF7', 'Iz'],
+    # 21: ['P8', 'TP8'],
+    # 24: ['PO7'],
+    # 26: ['CP1'],
+    # 27: ['C6'],
+    # 30: ['TP8'],
+    31: ['P2'],
+}
+
 # Input and output folders
 input_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg1_raweeg"
 output_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\MNE_preprocessed"
@@ -12,8 +34,8 @@ output_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\MNE_preprocessed"
 # Create output folder if it doesn't exist
 os.makedirs(output_path, exist_ok=True)
 
-# Loop through subjects 5–37 (skip 1-4: bad sampling rates / corrupt data)
-for sub in range(5, 38):
+# Loop through selected participants (skip 1-4: bad sampling rates / corrupt data)
+for sub in plist:
     
     sub_id = f"{sub:04d}"  # formats 1 -> 0001, 32 -> 0032
     filename = f"MCRL_{sub_id}.vhdr"
@@ -29,6 +51,21 @@ for sub in range(5, 38):
         # Load BrainVision file
         # This automatically reads the .vhdr, .vmrk, and .eeg files as a single Raw object.
         raw = mne.io.read_raw_brainvision(filepath, preload=True)
+        
+        # Set standard 10-20 montage so MNE knows electrode positions.
+        # CHECK THIS; THAT IT MATCHES OUR ELECTRODE POSITIONS!!
+        # This is needed for interpolation and for correct topoplots.
+        montage = mne.channels.make_standard_montage('standard_1020')
+        raw.set_montage(montage, on_missing='warn')
+        
+        # Remove bad channels (Step 6 from FieldTrip)
+        # Mark noisy electrodes, interpolate them from neighbours,
+        # then continue with the clean data.
+        bads = bad_channels.get(sub, [])
+        if bads:
+            raw.info['bads'] = bads
+            raw.interpolate_bads(reset_bads=True)
+            print(f"  Interpolated bad channels: {bads}")
         
         # Apply 1–40 Hz band-pass filter
         # In MNE, l_freq is the lower cutoff frequency and h_freq is the upper cutoff frequency. 
@@ -74,7 +111,8 @@ for sub in range(5, 38):
         # Step 2: Select only our triggers of interest (feedback onset)
         #   S 77 = free choice,  S 88 = forced choice
         #   S 99 = mixed choice, S 98 = mixed choice
-        wanted_triggers = ['S 77', 'S 88', 'S 99', 'S 98']
+        # Note: BrainVision annotations in MNE use the full 'Stimulus/S XX' format.
+        wanted_triggers = ['Stimulus/S 77', 'Stimulus/S 88', 'Stimulus/S 99', 'Stimulus/S 98']
         triggers = {}
         for t in wanted_triggers:
             if t in event_id:
