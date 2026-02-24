@@ -233,7 +233,7 @@ for sub in plist:
         # ── Save cleaned epochs ───────────────────────────────
         # Equivalent to FieldTrip:
         #   save(['D:/MCRL DATA/eeg3_clean/MCRL_' num2str(pnum)], 'dataClean', 'pExcludeNoise');
-        out_file = os.path.join(output_path, f"MCRL_{sub_id}-epo-clean.fif")
+        out_file = os.path.join(output_path, f"MCRL_{sub_id}-epo.fif") # Renamed to -epo.fif
         epochs_clean.save(out_file, overwrite=True)
         print(f"  ✓ Cleaned epochs saved → {out_file}")
 

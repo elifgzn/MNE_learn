@@ -125,7 +125,14 @@ for sub in plist:
             print(f"  SKIPPED — no matching triggers found")
             continue
         
-        # Step 3: Create epochs: -2.5 s before to +2.5 s after feedback onset
+        # Step 3: Filter events to ONLY include our target triggers.
+        # This is CRITICAL so that epochs.selection (used in later matching)
+        # corresponds to the trial index (0, 1, 2...) rather than the 
+        # index in the full list of all EEG markers (fixations, etc.).
+        mask = np.isin(events[:, 2], list(triggers.values()))
+        events = events[mask]
+
+        # Step 4: Create epochs: -2.5 s before to +2.5 s after feedback onset
         epochs = mne.Epochs(
             raw, events, event_id=triggers,
             tmin=-2.5, tmax=2.5,
