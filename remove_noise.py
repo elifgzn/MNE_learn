@@ -28,6 +28,15 @@ component_exclusions = {
     31: [0, 1, 2],   # e.g. change to [0, 2] once you've inspected
 }
 
+# ──────────────────────────────────────────────────────────────
+# Bad channels per participant (Step 6 from FieldTrip workflow)
+# MUST MATCH 20_reading_eeg_data.py
+# ──────────────────────────────────────────────────────────────
+bad_channels = {
+    31: ['P2'],
+}
+
+
 # Paths
 input_path  = r"C:\Users\elifg\Desktop\PHD\MNE_learn\MNE_preprocessed"
 output_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\eeg3_clean"   # separate folder for clean data
@@ -129,22 +138,31 @@ for sub in plist:
         print(f"  ✓ Baseline correction applied (−200 ms to 0 ms)")
 
         # ── Artifact rejection (general noise) ────────────────
-        # Equivalent to FieldTrip:
-        #   cfg.artfctdef.threshold.channel = 'all';
-        #   cfg.artfctdef.threshold.min = -100;   % µV
+        # Match FieldTrip's absolute threshold method:
+        #   cfg.artfctdef.threshold.min = -100; % µV
         #   cfg.artfctdef.threshold.max = 100;
-        #   cfg.artfctdef.reject = 'complete';    % reject whole trial
         #
-        # Done AFTER ICA removal (baseline already applied), so that
-        # blink-inflated amplitudes don't cause unnecessary trial loss.
-        # If one channel is noisy all the time → exclude it upstream
-        # (in the preprocessing / importEEG step) rather than here.
+        # FieldTrip rejects trials if the signal crosses ±100 µV.
+        # MNE's default epochs_clean.drop_bad(reject=dict(eeg=100e-1)) uses 
+        # PEAK-TO-PEAK (max-min), which is much stricter. We use manual
+        # absolute thresholding here to match FieldTrip exactly.
         n_before = len(epochs_clean)
-        reject_criteria = dict(eeg=100e-6)   # ±100 µV absolute threshold
-        epochs_clean.drop_bad(reject=reject_criteria)
+        
+        # Vectorized check for speed:
+        data = epochs_clean.get_data(copy=False)  # Shape: (epochs, channels, times)
+        # Find indices of epochs where ANY channel at ANY time is > 100µV or < -100µV
+        # MNE by deafault deals with volts, not microvolts. that's why we multiply by 1e-6
+        # most likely could be set up to deal with microvolts, if easier manipulation of criteria is desired
+        is_bad = np.any((data > 100e-6) | (data < -100e-6), axis=(1, 2))
+        bad_indices = np.where(is_bad)[0]
+        
+        # Drop the bad trials
+        epochs_clean.drop(bad_indices)
+        
         n_after   = len(epochs_clean)
         n_dropped = n_before - n_after
         pct_dropped = round((n_dropped / n_before) * 100, 2)
+
 
         # Quality guide (mirrors FieldTrip comments):
         #   0–5 %  → very good
@@ -181,18 +199,36 @@ for sub in plist:
         #   cfg.missingchannel = addc;
         #   dataAddChan = ft_channelrepair(cfg, dataClean);
         #
-        # Replaces channels that were marked as bad (info['bads']) during
-        # preprocessing, using the signal from surrounding electrodes.
-        # MNE tracks bad channels in epochs.info['bads'] automatically,
-        # and interpolate_bads() restores them in the correct channel order
-        # — no manual position-sorting needed (unlike the MATLAB version).
-        bads = epochs_clean.info['bads']
+        # Replaces channels that were dropped during preprocessing (first script).
+        # We add them back as flat channels, mark them as 'bad', and interpolate.
+        bads = bad_channels.get(sub, [])
         if bads:
-            print(f"  Interpolating bad channel(s): {bads}")
-            epochs_clean.interpolate_bads(reset_bads=True)  # method='spline' by default for EEG
+            print(f"  Adding back and interpolating dropped channel(s): {bads}")
+            # Add the missing channels back as flat (all zeros) channels
+            epochs_clean.add_reference_channels(bads)
+            
+            # ──────────────────────────────────────────────────────────
+            # CRITICAL: Re-apply montage so the added channels get positions.
+            # Without positions, interpolate_bads() fails with NaNs.
+            # ──────────────────────────────────────────────────────────
+            montage = mne.channels.make_standard_montage('standard_1020')
+            epochs_clean.set_montage(montage, on_missing='ignore')
+            
+            # Mark them as bad for interpolation
+            epochs_clean.info['bads'] = bads
+            # Interpolate bads using the surrounding sensors
+            epochs_clean.interpolate_bads(reset_bads=True)  # method='spline' by default
+            
+            # FieldTrip ensures channel order matches the original layout.
+            # MNE.interpolate_bads does NOT automatically reorder channels.
+            # We pick the standard 1020 channels back in order if needed.
+            # For now, we assume the original loading order is desired.
+            # In your A4_1/A4_2 scripts, you refer to 'layout65'.
+            # MNE usually handles this fine as long as the names match.
             print(f"  ✓ Spherical spline interpolation done")
         else:
             print(f"  No bad channels to interpolate")
+
 
         # ── Save cleaned epochs ───────────────────────────────
         # Equivalent to FieldTrip:

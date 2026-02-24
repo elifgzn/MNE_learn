@@ -4,6 +4,7 @@
 import os
 import gc
 import mne
+from mne.preprocessing import ICA
 
 # ──────────────────────────────────────────────────────────────
 # Which participant(s) to process?
@@ -24,7 +25,7 @@ bad_channels = {
     # 26: ['CP1'],
     # 27: ['C6'],
     # 30: ['TP8'],
-    31: ['P2'],
+    31: ['P2']
 }
 
 # Input and output folders
@@ -59,19 +60,19 @@ for sub in plist:
         raw.set_montage(montage, on_missing='warn')
         
         # Remove bad channels (Step 6 from FieldTrip)
-        # Mark noisy electrodes, interpolate them from neighbours,
-        # then continue with the clean data.
+        # In FieldTrip, we exclude these channels from the data entirely before ICA.
+        # dat_raw = ft_selectdata(cfg, dat_raw);
         bads = bad_channels.get(sub, [])
         if bads:
-            raw.info['bads'] = bads
-            raw.interpolate_bads(reset_bads=True)
-            print(f"  Interpolated bad channels: {bads}")
+            raw.drop_channels(bads)
+            print(f"  Dropped bad channels: {bads}")
         
         # Apply 1–40 Hz band-pass filter
         # In MNE, l_freq is the lower cutoff frequency and h_freq is the upper cutoff frequency. 
         # So, l_freq specifies the high-pass filter and h_freq specifies the low-pass filter.
         # by default, MNE uses FIR filter. this is very costly takes a lot of time. 
-        # fieldtrip default is an IIR butterworth filter. to match our classical fieldtrip workflow and be more efficient, we set an IIR butterworth filter here as well
+        # fieldtrip default is an IIR butterworth filter. to match our classical fieldtrip workflow and be more
+        # efficient, we set an IIR butterworth filter here as well
         raw.filter(
             l_freq=1.,
             h_freq=40.,
@@ -128,7 +129,8 @@ for sub in plist:
         epochs = mne.Epochs(
             raw, events, event_id=triggers,
             tmin=-2.5, tmax=2.5,
-            preload=True, verbose=False
+            preload=True, verbose=False,
+            baseline = None # we will do baseline correction later explicitly to match FieldTrip
         )
         
         # Downsample to 250 Hz
@@ -142,7 +144,13 @@ for sub in plist:
         # We already filtered at 40 Hz, well below the new Nyquist (125 Hz).
         epochs.resample(250, verbose=False)
         
-        print(f"  {len(epochs)} epochs, {epochs.info['sfreq']:.0f} Hz ({dict(epochs.metadata['event_name'].value_counts()) if hasattr(epochs, 'metadata') and epochs.metadata is not None else {k: (epochs.events[:, 2] == v).sum() for k, v in triggers.items()}})")
+        # Count triggers for display
+        if hasattr(epochs, 'metadata') and epochs.metadata is not None:
+            counts = dict(epochs.metadata['event_name'].value_counts())
+        else:
+            counts = {k: (epochs.events[:, 2] == v).sum() for k, v in triggers.items()}
+        
+        print(f"  {len(epochs)} epochs, {epochs.info['sfreq']:.0f} Hz  {counts}")
 
         # In our fieldtrip workflow, we would now switch to single precision.
         # this means, we would convert our data to float32 from float64 to save memory.
@@ -150,12 +158,14 @@ for sub in plist:
         # In MNE, the data stays float64 in memory (for numerical accuracy during processing)
         # but is saved as float32 via fmt='single' in the save step below.
 
-        # In our fieldtrip workflow, there is a block here where we update trigger info according to downsampling:
+        # In our fieldtrip workflow, there is a block here where we update trigger info according to 
+        # downsampling:
         # for tnum=1:numtrials
         # tinfoCue.trl(tnum,2) = tinfoCue.trl(tnum,1) + size(eegdata.trial{tnum},2)-1;
         # tinfoCue.trl(tnum,3) = -1*(find(eegdata.time{1}>=0,1)-1); %offset = samples before point 0
         # end
-        # this is needed because fieldtrip sometimes tracks time in secodns instead of trials, so we need to match trials and triggers manually. 
+        # this is needed because fieldtrip sometimes tracks time in secodns instead of trials, so we need to 
+        # match trials and triggers manually. 
         # We don't need to do this in MNE because MNE keeps track of the original sample indices.
         
         # ICA for artifact correction (eyeblinks)
@@ -164,15 +174,24 @@ for sub in plist:
         #   cfg.runica.extended = 0;
         #   components = ft_componentanalysis(cfg, eegdata);
         #
-        # In MNE, 'infomax' is the same algorithm as FieldTrip's 'runica'.
         # ICA decomposes the data into independent components. Components
         # capturing eyeblinks/eye movements will be identified and rejected
         # in a later interactive step.
-        from mne.preprocessing import ICA
+        
+        # ica = ICA(
+        #     method='infomax',           # same as runica
+        #     fit_params=dict(extended=False),  # matches cfg.runica.extended = 0
+        #     random_state=42             # for reproducibility
+        # )
+
+        # In MNE, 'infomax' is the same algorithm as FieldTrip's 'runica'.
+        # we choose this to match FieldTrip, but this the slowest option on MNE.
+        # could look into: fastica, picard. picard should be mathematically equivalent to infomax,
+        # but converges significantly faster due to a better optimization strategy.
         ica = ICA(
-            method='infomax',           # same as runica
-            fit_params=dict(extended=False),  # matches cfg.runica.extended = 0
-            random_state=42             # for reproducibility
+            method='picard',
+            fit_params=dict(ortho=False, extended=False),  # ortho=False, extended=False = standard Infomax
+            random_state=42
         )
         ica.fit(epochs, verbose=False)
         print(f"  ICA fitted: {ica.n_components_} components")
