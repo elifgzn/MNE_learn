@@ -210,8 +210,10 @@ for sub in plist:
             # ──────────────────────────────────────────────────────────
             # CRITICAL: Re-apply montage so the added channels get positions.
             # Without positions, interpolate_bads() fails with NaNs.
+            # Uses the actual actiCAP .bvef file (must match 20_reading_eeg_data.py).
             # ──────────────────────────────────────────────────────────
-            montage = mne.channels.make_standard_montage('standard_1020')
+            bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
+            montage = mne.channels.read_custom_montage(bvef_path)
             epochs_clean.set_montage(montage, on_missing='ignore')
             
             # Mark them as bad for interpolation
