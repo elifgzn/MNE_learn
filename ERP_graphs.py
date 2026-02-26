@@ -26,10 +26,8 @@ os.makedirs(save_to, exist_ok=True)
 # ──────────────────────────────────────────────────────────────
 # Electrode and time window selection for Reward Positivity
 # ──────────────────────────────────────────────────────────────
-# FieldTrip: electrodes_select = {'FC3','AF8','AF3','FCz'};
-# (alternative literature-based set, commented out in FieldTrip):
-# electrodes_select = ['FC1', 'FC2', 'FCz', 'Fz']
-electrodes_select = ['FC3', 'AF8', 'AF3', 'FCz']
+
+electrodes_select = ['Fz', 'FCz', 'FC1', 'FC2']
 
 # Time window for Reward Positivity analysis and topoplots
 # FieldTrip: time_select = [0.20 0.30];  % literature-based time window
@@ -474,11 +472,9 @@ print(f"\n  Figure saved: {save_path}")
 #   cfg.zlim      = [-1.5 1.5];
 #   ft_topoplotER(cfg, GA_dat{num_plot});
 #
-# In MNE, evoked.plot_topomap() is the equivalent. We crop to time_select,
-# average the data within that window, and plot one topomap per condition.
-# The highlighted electrodes are marked with '*' on the plot.
-
-from matplotlib.colors import TwoSlopeNorm
+# In MNE, we use the `mask` parameter of plot_topomap() to highlight
+# the selected electrodes (equivalent to cfg.highlightchannel).
+# MNE handles the 2D projection internally so positions always match.
 
 # Colormap: FieldTrip uses flipud(brewermap(1000,'RdBu')) → reversed RdBu.
 # matplotlib's 'RdBu_r' is the reversed version (blue for negative, red for positive).
@@ -494,6 +490,18 @@ topo_fig_in = 8 / 2.54   # ~3.15 inches
 # Time window for averaging: FieldTrip cfg.xlim = time_select
 t_min, t_max = time_select
 
+# Build a boolean mask for the highlighted electrodes.
+# FieldTrip: cfg.highlightchannel = electrodes_select; cfg.highlightsymbol = '*'
+# MNE: mask = boolean array [n_channels], True = highlight with mask_params style.
+def make_highlight_mask(evoked, highlight_names):
+    """Return a boolean array (n_channels,) — True for channels to highlight."""
+    mask = np.array([ch in highlight_names for ch in evoked.ch_names])
+    return mask
+
+# Style for highlighted channels (FieldTrip: cfg.highlightsymbol = '*', cfg.highlightsize = 10)
+mask_params = dict(marker='*', markerfacecolor='black', markeredgecolor='black',
+                   markersize=10, zorder=10)
+
 if plotType == 1:
     # ── Non-difference wave: one topo per condition ──────────
     topo_labels = ['High Control, Positive FB', 'High Control, Negative FB',
@@ -501,49 +509,26 @@ if plotType == 1:
     topo_prefix = '00_topo_allconds_allchoices'
 
     for cond_idx, cond_label in enumerate(cond_names):
-        # Get the grand-average Evoked for this condition
         evoked_topo = GA_dat[cond_label].copy()
-
-        # Crop to the time window and average across time → one value per channel
         evoked_topo.crop(tmin=t_min, tmax=t_max)
         topo_data = evoked_topo.data.mean(axis=1)   # [n_channels] in Volts
 
-        # Create figure
         fig_topo, ax_topo = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
 
-        # Plot topomap
         # FieldTrip: ft_topoplotER(cfg, GA_dat{num_plot})
-        # MNE plot_topomap expects data in Volts; vlim also in Volts
+        highlight_mask = make_highlight_mask(evoked_topo, picked_channels)
         mne.viz.plot_topomap(
             topo_data, evoked_topo.info,
             axes=ax_topo,
             cmap=topo_cmap,
             vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),   # µV → V
+            mask=highlight_mask,
+            mask_params=mask_params,
             show=False,
             contours=6,
         )
 
-        # Highlight selected electrodes with '*'
-        # FieldTrip: cfg.highlightchannel / cfg.highlightsymbol = '*'
-        ch_pos = evoked_topo.get_montage().get_positions()['ch_pos']
-        for ch_name in picked_channels:
-            if ch_name in ch_pos:
-                pos = ch_pos[ch_name][:2]   # x, y in head coordinates
-                # Transform to axes coordinates using the same projection MNE uses
-                # We'll overlay markers using the channel positions from the topomap
-        # Use MNE's internal layout to get 2D positions matching the topomap
-        from mne.channels.layout import _find_topomap_coords
-        coords_2d = _find_topomap_coords(evoked_topo.info, picks='eeg')
-        ch_names_all = [evoked_topo.info['ch_names'][i]
-                        for i in mne.pick_types(evoked_topo.info, eeg=True)]
-        for ch_idx, ch_name in enumerate(ch_names_all):
-            if ch_name in picked_channels:
-                ax_topo.plot(coords_2d[ch_idx, 0], coords_2d[ch_idx, 1],
-                             '*', color='black', markersize=10, zorder=10)
-
-        # FieldTrip: title(labels{num_plot})
         ax_topo.set_title(topo_labels[cond_idx], fontsize=12)
-
         fig_topo.patch.set_facecolor('white')
         fig_topo.tight_layout()
 
@@ -567,24 +552,17 @@ elif plotType == 2:
 
         fig_topo, ax_topo = plt.subplots(figsize=(topo_fig_in, topo_fig_in))
 
+        highlight_mask = make_highlight_mask(evoked_topo, picked_channels)
         mne.viz.plot_topomap(
             topo_data, evoked_topo.info,
             axes=ax_topo,
             cmap=topo_cmap,
             vlim=(topo_vlim[0] * 1e-6, topo_vlim[1] * 1e-6),
+            mask=highlight_mask,
+            mask_params=mask_params,
             show=False,
             contours=6,
         )
-
-        # Highlight selected electrodes
-        from mne.channels.layout import _find_topomap_coords
-        coords_2d = _find_topomap_coords(evoked_topo.info, picks='eeg')
-        ch_names_all = [evoked_topo.info['ch_names'][i]
-                        for i in mne.pick_types(evoked_topo.info, eeg=True)]
-        for ch_idx, ch_name in enumerate(ch_names_all):
-            if ch_name in picked_channels:
-                ax_topo.plot(coords_2d[ch_idx, 0], coords_2d[ch_idx, 1],
-                             '*', color='black', markersize=10, zorder=10)
 
         ax_topo.set_title(topo_labels_diff[cond_idx], fontsize=12)
         fig_topo.patch.set_facecolor('white')
@@ -597,4 +575,5 @@ elif plotType == 2:
         print(f"  Topo saved: {topo_prefix}_{diff_label} (.svg + .tiff)")
 
 plt.show()   # display all figures interactively; close windows to end script
+
 

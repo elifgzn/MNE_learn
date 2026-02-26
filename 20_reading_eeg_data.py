@@ -3,6 +3,7 @@
 
 import os
 import gc
+import numpy as np
 import mne
 from mne.preprocessing import ICA
 
@@ -64,6 +65,10 @@ for sub in plist:
         # MNE reads it via read_custom_montage() (requires the defusedxml package).
         bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
         montage = mne.channels.read_custom_montage(bvef_path)
+        # The .bvef file names the online reference "REF", but in our data it's
+        # called "FCz" (added later via add_reference_channels). Rename so
+        # FCz gets a valid position instead of NaN.
+        montage.rename_channels({'REF': 'FCz'})
         raw.set_montage(montage, on_missing='warn')
         
         # Remove bad channels (Step 6 from FieldTrip)

@@ -214,6 +214,8 @@ for sub in plist:
             # ──────────────────────────────────────────────────────────
             bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
             montage = mne.channels.read_custom_montage(bvef_path)
+            # Rename 'REF' → 'FCz' to match our channel naming (see 20_reading_eeg_data.py)
+            montage.rename_channels({'REF': 'FCz'})
             epochs_clean.set_montage(montage, on_missing='ignore')
             
             # Mark them as bad for interpolation
