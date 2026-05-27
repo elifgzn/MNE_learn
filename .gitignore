@@ -15,3 +15,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+eeg3_clean/
+eeg4_ERPSummaries/
+eeg5_figures/
