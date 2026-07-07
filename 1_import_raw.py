@@ -103,6 +103,7 @@ for sub in plist:
         #   During recording, FCz was the online reference so it's not in the data.
         #   This adds it as a flat (all zeros) channel → 64 becomes 65 channels.
         raw.add_reference_channels('FCz')
+        raw.set_montage(montage, on_missing='warn')  # re-apply so FCz gets its position
         
         # Step 2: Re-reference to the average of all 65 electrodes.
         #   Each channel = original − mean(all channels).

@@ -206,18 +206,20 @@ for sub in plist:
             print(f"  Adding back and interpolating dropped channel(s): {bads}")
             # Add the missing channels back as flat (all zeros) channels
             epochs_clean.add_reference_channels(bads)
-            
-            # ──────────────────────────────────────────────────────────
-            # CRITICAL: Re-apply montage so the added channels get positions.
-            # Without positions, interpolate_bads() fails with NaNs.
-            # Uses the actual actiCAP .bvef file (must match 20_reading_eeg_data.py).
-            # ──────────────────────────────────────────────────────────
-            bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
-            montage = mne.channels.read_custom_montage(bvef_path)
-            # Rename 'REF' → 'FCz' to match our channel naming (see 20_reading_eeg_data.py)
-            montage.rename_channels({'REF': 'FCz'})
-            epochs_clean.set_montage(montage, on_missing='ignore')
-            
+
+        # ──────────────────────────────────────────────────────────
+        # CRITICAL: Always re-apply montage so ALL channels have valid
+        # 3D positions (including any just-added channels).
+        # Without positions, interpolate_bads() fails with NaNs.
+        # Uses the actual actiCAP .bvef file (must match 1_import_raw.py).
+        # ──────────────────────────────────────────────────────────
+        bvef_path = r"C:\Users\elifg\Desktop\PHD\MNE_learn\actiCap_snap_CACS_CAS\actiCap_slim_for BrainAmpDC\CACS-64\CACS-64_REF.bvef"
+        montage = mne.channels.read_custom_montage(bvef_path)
+        # Rename 'REF' → 'FCz' to match our channel naming (see 1_import_raw.py)
+        montage.rename_channels({'REF': 'FCz'})
+        epochs_clean.set_montage(montage, on_missing='ignore')
+
+        if bads:
             # Mark them as bad for interpolation
             epochs_clean.info['bads'] = bads
             # Interpolate bads using the surrounding sensors
